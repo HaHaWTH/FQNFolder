@@ -114,16 +114,15 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
             return;
         }
 
-        if (isInnerClassReference(qualifierText)) {
-            return;
-        }
-
         PsiElement resolved = refExpr.resolve();
         if (resolved instanceof PsiField || resolved instanceof PsiMethod) {
             PsiModifierListOwner modifierListOwner = (PsiModifierListOwner) resolved;
 
             if (modifierListOwner.hasModifierProperty(PsiModifier.STATIC)) {
                 String simpleName = getSimpleName(qualifierText);
+                if (qualifierText.equals(simpleName)) {
+                    return;
+                }
 
                 TextRange qualifierRange = qualifier.getTextRange();
 
@@ -163,27 +162,32 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
     private void processTypeElement(PsiTypeElement typeElement,
                                     Map<String, List<QualifiedReference>> qualifiedNames,
                                     int threshold) {
+        PsiType type = typeElement.getType();
+        if (type instanceof PsiWildcardType) {
+            return;
+        }
         String typeText = typeElement.getText();
 
         int genericStart = typeText.indexOf('<');
         String mainType = genericStart > 0 ? typeText.substring(0, genericStart).trim() : typeText;
 
         if (mainType.contains(".") && mainType.length() > threshold && !isArrayType(mainType)) {
-            if (!isInnerClassReference(mainType)) {
-                String simpleName = getSimpleName(mainType);
-
-                TextRange typeRange = typeElement.getTextRange();
-                TextRange adjustedRange = genericStart > 0
-                        ? new TextRange(typeRange.getStartOffset(), typeRange.getStartOffset() + genericStart)
-                        : typeRange;
-
-                QualifiedReference qRef = new QualifiedReference(
-                        typeElement.getNode(),
-                        adjustedRange,
-                        mainType
-                );
-                qualifiedNames.computeIfAbsent(simpleName, k -> new ArrayList<>()).add(qRef);
+            String simpleName = getSimpleName(mainType);
+            if (mainType.equals(simpleName)) {
+                return;
             }
+
+            TextRange typeRange = typeElement.getTextRange();
+            TextRange adjustedRange = genericStart > 0
+                    ? new TextRange(typeRange.getStartOffset(), typeRange.getStartOffset() + genericStart)
+                    : typeRange;
+
+            QualifiedReference qRef = new QualifiedReference(
+                    typeElement.getNode(),
+                    adjustedRange,
+                    mainType
+            );
+            qualifiedNames.computeIfAbsent(simpleName, k -> new ArrayList<>()).add(qRef);
         }
     }
 
@@ -197,8 +201,11 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
             int genericStart = text.indexOf('<');
             String mainType = genericStart > 0 ? text.substring(0, genericStart).trim() : text;
 
-            if (mainType.contains(".") && mainType.length() > threshold && !isInnerClassReference(mainType)) {
+            if (mainType.contains(".") && mainType.length() > threshold) {
                 String simpleName = getSimpleName(mainType);
+                if (mainType.equals(simpleName)) {
+                    return;
+                }
 
                 TextRange refRange = classReference.getTextRange();
                 TextRange adjustedRange = genericStart > 0
@@ -219,35 +226,31 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
         return type.contains("[") || type.contains("]");
     }
 
-    private boolean isInnerClassReference(String qualifiedName) {
-        if (qualifiedName.contains("$")) {
-            return true;
-        }
-
-        String[] parts = qualifiedName.split("\\.");
-        if (parts.length >= 2) {
-            String lastPart = parts[parts.length - 1];
-            String secondLastPart = parts[parts.length - 2];
-
-            if (!secondLastPart.isEmpty() && Character.isUpperCase(secondLastPart.charAt(0)) &&
-                    !lastPart.isEmpty() && Character.isUpperCase(lastPart.charAt(0))) {
-                return !isCommonPackageName(secondLastPart);
-            }
-        }
-
-        return false;
-    }
-
     private boolean isCommonPackageName(String name) {
-        return name.equals(name.toLowerCase()) ||
-                name.equals("awt") || name.equals("util") || name.equals("io") ||
-                name.equals("nio") || name.equals("sql") || name.equals("net") ||
-                name.equals("lang") || name.equals("math") || name.equals("text");
+        return name.equals(name.toLowerCase()) || name.equals("lang") || name.equals("javax") || name.equals("awt");
     }
 
     private String getSimpleName(String qualifiedName) {
-        int lastDot = qualifiedName.lastIndexOf('.');
-        return lastDot >= 0 ? qualifiedName.substring(lastDot + 1) : qualifiedName;
+        String[] parts = qualifiedName.split("\\.");
+        if (parts.length == 0) {
+            return qualifiedName;
+        }
+
+        String effectiveSimpleName = parts[parts.length - 1];
+
+        for (int i = parts.length - 2; i >= 0; i--) {
+            String potentialOuter = parts[i];
+
+            if (!potentialOuter.isEmpty() &&
+                    Character.isUpperCase(potentialOuter.charAt(0)) &&
+                    !isCommonPackageName(potentialOuter)) {
+                effectiveSimpleName = potentialOuter + "." + effectiveSimpleName;
+            } else {
+                break;
+            }
+        }
+
+        return effectiveSimpleName;
     }
 
     @Nullable
