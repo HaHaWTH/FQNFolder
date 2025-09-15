@@ -79,12 +79,47 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
             case PsiReferenceExpression refExpr -> {
                 processReferenceExpression(refExpr, qualifiedNames, threshold);
             }
+            case PsiReferenceList refList -> {
+                if (refList.getParent() instanceof PsiClass) {
+                    processReferenceList(refList, qualifiedNames, threshold);
+                }
+            }
             default -> {
             }
         }
 
         for (PsiElement child : element.getChildren()) {
             collectQualifiedReferences(child, qualifiedNames, threshold);
+        }
+    }
+
+    private void processReferenceList(PsiReferenceList refList,
+                                      Map<String, List<QualifiedReference>> qualifiedNames,
+                                      int threshold) { // Handle extends and implements
+        for (PsiJavaCodeReferenceElement ref : refList.getReferenceElements()) {
+            String text = ref.getText();
+
+            int genericStart = text.indexOf('<');
+            String mainType = genericStart > 0 ? text.substring(0, genericStart).trim() : text;
+
+            if (mainType.contains(".") && mainType.length() > threshold) {
+                String simpleName = getSimpleName(mainType);
+                if (mainType.equals(simpleName)) {
+                    continue;
+                }
+
+                TextRange refRange = ref.getTextRange();
+                TextRange adjustedRange = genericStart > 0
+                        ? new TextRange(refRange.getStartOffset(), refRange.getStartOffset() + genericStart)
+                        : refRange;
+
+                QualifiedReference qRef = new QualifiedReference(
+                        ref.getNode(),
+                        adjustedRange,
+                        mainType
+                );
+                qualifiedNames.computeIfAbsent(simpleName, k -> new ArrayList<>()).add(qRef);
+            }
         }
     }
 
@@ -264,15 +299,6 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
         return true;
     }
 
-    public static class QualifiedReference {
-        final ASTNode node;
-        final TextRange range;
-        final String qualifiedName;
-
-        public QualifiedReference(ASTNode node, TextRange range, String qualifiedName) {
-            this.node = node;
-            this.range = range;
-            this.qualifiedName = qualifiedName;
-        }
+    public record QualifiedReference(ASTNode node, TextRange range, String qualifiedName) {
     }
 }

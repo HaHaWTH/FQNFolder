@@ -30,7 +30,7 @@ public class FoldingConflictResolver {
 
         Map<String, List<QualifiedReference>> groupedByQualified = new HashMap<>();
         for (QualifiedReference ref : references) {
-            groupedByQualified.computeIfAbsent(ref.qualifiedName, k -> new ArrayList<>()).add(ref);
+            groupedByQualified.computeIfAbsent(ref.qualifiedName(), k -> new ArrayList<>()).add(ref);
         }
 
         Map<String, String> qualifiedToFolded = findMinimumDistinguishingNames(
