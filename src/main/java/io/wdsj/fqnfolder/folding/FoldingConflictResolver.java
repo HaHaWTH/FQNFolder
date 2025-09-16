@@ -3,6 +3,7 @@ package io.wdsj.fqnfolder.folding;
 import io.wdsj.fqnfolder.folding.QualifiedNameFoldingBuilder.QualifiedReference;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FoldingConflictResolver {
 
@@ -18,19 +19,26 @@ public class FoldingConflictResolver {
             if (references.size() == 1) {
                 result.put(references.getFirst(), simpleName);
             } else {
-                resolveConflictGroup(references, result);
+                resolveConflictGroup(simpleName, references, result);
             }
         }
 
         return result;
     }
 
-    private void resolveConflictGroup(List<QualifiedReference> references,
+    private void resolveConflictGroup(String simpleName, List<QualifiedReference> references,
                                       Map<QualifiedReference, String> result) {
 
         Map<String, List<QualifiedReference>> groupedByQualified = new HashMap<>();
         for (QualifiedReference ref : references) {
             groupedByQualified.computeIfAbsent(ref.qualifiedName(), k -> new ArrayList<>()).add(ref);
+        }
+
+        if (groupedByQualified.size() == 1) {
+            for (QualifiedReference ref : references) {
+                result.put(ref, simpleName);
+            }
+            return;
         }
 
         Map<String, String> qualifiedToFolded = findMinimumDistinguishingNames(
@@ -48,10 +56,10 @@ public class FoldingConflictResolver {
     }
 
     private Map<String, String> findMinimumDistinguishingNames(Set<String> qualifiedNames) {
-        Map<String, String> result = new HashMap<>();
+        Map<String, String> result = new ConcurrentHashMap<>();
         List<String> namesList = new ArrayList<>(qualifiedNames);
 
-        for (String name : namesList) {
+        namesList.parallelStream().forEach(name -> {
             String[] parts = name.split("\\.");
             String simpleName = parts[parts.length - 1];
 
@@ -89,7 +97,7 @@ public class FoldingConflictResolver {
                 }
                 result.put(name, distinguishedName);
             }
-        }
+        });
 
         return result;
     }
