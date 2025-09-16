@@ -198,7 +198,7 @@ public class QualifiedNameFoldingBuilder extends FoldingBuilderEx {
                                     Map<String, List<QualifiedReference>> qualifiedNames,
                                     int threshold) {
         PsiType type = typeElement.getType();
-        if (type instanceof PsiWildcardType) {
+        if (type instanceof PsiWildcardType) { // Don't handle wildcard types, let them be handled by the recursion
             return;
         }
         String typeText = typeElement.getText();
